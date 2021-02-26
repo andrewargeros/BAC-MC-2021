@@ -14,3 +14,5 @@ joined_files = geopandas.sjoin(zoning, nyc, how="right", op = "intersects") # ch
 livable_area = joined_files[joined_files['ZONEDIST'].isin(residential_zones)].groupby('BoroCD').sum()[["Shape__Area_x", "Shape__Area_y"]]
 
 livable_area["pct_livable"] = livable_area['Shape__Area_x']/livable_area['Shape__Area_y']
+
+nyc.merge(livable_area, on="BoroCD").plot(column = "pct_livable") # map of pct livable area by community districts
