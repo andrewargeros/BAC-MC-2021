@@ -2,11 +2,15 @@
 ## This data stems from the NYC Dept of Health COVID data repository on github
 
 library(tidyverse)
+library(tidymodels)
 library(readxl)
 library(sf)
 library(glue)
+library(nominatim) # devtools::install_github("hrbrmstr/nominatim")
 library(ggtext)
+library(recipeselectors) # devtools::install_github("stevenpawley/recipeselectors")
 library(showtext)
+
 font_add_google(name = "Lato", family = "lato")
 showtext::showtext_auto()
 
@@ -87,6 +91,106 @@ pop %>%
 ggsave(glue("{path}/Plots/pop_vs_capacity.png"), height = 7, width = 11, units = 'in')
 
 
-## Homeownership Rate and Trend -------------------------------------------------------------------
+## Home Ownership Rate and Trend ------------------------------------------------------------------
 
-hra
+get_slope = function(group){
+  dt = hrate %>% 
+    filter(`Sub-Borough Area` == group) %>% 
+    select(4:last_col()) %>% 
+    pivot_longer(everything(), names_to = 'year', values_to = 'value') %>% 
+    mutate(year = as.numeric(year)-2000) %>% 
+    filter(year != 0)
+  
+  l = lm(value~year, data = dt) %>% summary()
+  ret = l$coefficients[2] %>% as.numeric()
+  return(ret)
+  }
+  
+hrate = read_xlsx(glue(path, "/Data/NYC-housing-data.xlsx"), 
+                  sheet = 'home ownership rate') %>% 
+  select(!18:last_col()) %>% 
+  janitor::clean_names('snake')
+
+hrate_2 = hrate %>% 
+  select(sub_borough_area, `x2017`) %>% 
+  distinct() %>% 
+  rename('sba' = 1,
+         'h17' = 2) %>% 
+  mutate(slope = map(sba, get_slope) %>% as.numeric()) %>% 
+  mutate(slope_scale = scale(slope),
+         h17_scale = scale(h17))
+
+hrate_2 %>% filter(str_detect(sba, 'Stuyvesant'))
+
+## SBA to Community -------------------------------------------------------------------------------
+
+crd = read_xlsx(glue(path, "/Data/NYC-housing-data.xlsx"), 
+                  sheet = 'Crowding') %>% 
+  select(1:8) %>% 
+  janitor::clean_names('snake') %>% 
+  mutate(geography = str_remove_all(geography, '^borough/PUMA\\) - '))
+
+get_coord = function(place) {
+  t = osm_search(place, key = 'KgJM1qj6eHENOw7mMwdfd8qdKXn6Mto8')
+  
+  if (nrow(t) == 0){
+    
+    return(NA)
+    
+  } else if (nrow(t) > 1){
+    
+    return("Multiple")
+    
+  } else {
+    
+    coords = t %>% 
+      mutate(coords = glue('{lon}, {lat}') %>% as.character()) %>% 
+      select(coords) %>% 
+      as.character()
+    
+    return(coords)
+    
+  }
+}
+
+sub_boro_centers = hrate %>% 
+  mutate(name = ifelse(str_count(sub_borough_area, "/") > 0, 
+                       str_extract(sub_borough_area, "(.*?)/") %>% str_remove_all('/'),
+                       sub_borough_area),
+         name = ifelse(name == "Sheepshead Bay", "Brighton Beach", name),
+         name2 = glue('{name}, New York City') %>% as.character()) %>% 
+  select(sub_borough_area, name, name2) %>% 
+  mutate(coords = map(name2, get_coord) %>% as.character()) %>% 
+  mutate(coords = ifelse(name == 'South Crown Heights', '-73.944866, 40.671955', coords),
+         coords = ifelse(name == 'North Crown Heights', '-73.968728, 40.676602', coords), 
+         coords = ifelse(name == 'South Shore', '-74.202289, 40.545318', coords),
+         coords = ifelse(name == 'North Shore', '-74.089670, 40.634671', coords),
+         coords = ifelse(name == 'Mid-Island', '-74.185937, 40.582574', coords)) %>% 
+  mutate(lon = str_extract(coords, "^(.*?),") %>% str_remove(","),
+         lat = str_extract(coords, ", (.*?)$") %>% str_remove(", ")) %>% 
+  st_as_sf(coords = c('lon', 'lat'), crs = 4326, agr = "constant")
+
+joined_df = shape_file %>% 
+  st_join(sub_boro_centers, join = st_contains) %>% 
+  tibble() %>% 
+  select(NEIGHBORHOOD_NAME, name) %>% 
+  distinct()
+
+missing_sb = sub_boro_centers %>% 
+  as_tibble() %>% 
+  select(name) %>% 
+  distinct() %>% 
+  anti_join(., joined_sf %>% 
+                as_tibble() %>% 
+                select(name))
+
+shape_file %>% 
+  ggplot() +
+  geom_sf(color = "black") +
+  geom_sf(data = sub_boro_centers)
+
+## 2020 Data File ---------------------------------------------------------------------------------
+
+dat = read_csv(glue(path, "/Data/nyc_agg_data.csv")) %>% 
+  mutate(across(where(is.character), ~replace_na(.x, "Missing")))
+
