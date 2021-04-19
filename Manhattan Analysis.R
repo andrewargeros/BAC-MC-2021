@@ -6,8 +6,11 @@ library(tidymodels)
 library(readxl)
 library(sf)
 library(glue)
+library(embed)
+library(fpc)
 library(nominatim) # devtools::install_github("hrbrmstr/nominatim")
 library(ggtext)
+library(patchwork)
 library(recipeselectors) # devtools::install_github("stevenpawley/recipeselectors")
 library(showtext)
 
@@ -170,11 +173,7 @@ sub_boro_centers = hrate %>%
          lat = str_extract(coords, ", (.*?)$") %>% str_remove(", ")) %>% 
   st_as_sf(coords = c('lon', 'lat'), crs = 4326, agr = "constant")
 
-joined_df = shape_file %>% 
-  st_join(sub_boro_centers, join = st_contains) %>% 
-  tibble() %>% 
-  select(NEIGHBORHOOD_NAME, name) %>% 
-  distinct()
+joined_sf = shape_file %>% st_join(sub_boro_centers, join = st_contains)
 
 missing_sb = sub_boro_centers %>% 
   as_tibble() %>% 
@@ -184,13 +183,314 @@ missing_sb = sub_boro_centers %>%
                 as_tibble() %>% 
                 select(name))
 
-shape_file %>% 
+pl = shape_file %>% 
   ggplot() +
   geom_sf(color = "black") +
   geom_sf(data = sub_boro_centers)
+
+p2 = joined_sf %>% 
+  left_join(., hrate, by = 'sub_borough_area') %>%
+  mutate(rate = (COVID_CASE_COUNT/POP_DENOMINATOR)/x2017) %>% 
+  group_by(BoroCD) %>% 
+  mutate(rate = mean(rate, na.rm = T)) %>% 
+  ungroup() %>% 
+  mutate(n = ntile(rate, 4)) %>% 
+  ggplot() +
+  geom_sf(aes(fill = rate))
+
+pl|p2
+
+names = read_xlsx(glue(path, "/Data/sub_boro_cd_conversion.xlsx"), 
+                  sheet = 1) %>% 
+  mutate(sub_borough_area = ifelse(is.na(sub_borough_area), census_name, sub_borough_area)) %>% 
+  mutate(boro_code = strsplit(as.character(boro_cd), ", ")) %>% 
+  unnest(boro_code) %>% 
+  transform(boro_code = as.numeric(boro_code))
+
+hrate %>% 
+  select(sub_borough_area, x2017) %>% 
+  left_join(., names, by = 'sub_borough_area') %>% 
+  left_join(., shape_file, by = c('boro_code' = 'BoroCD')) %>%
+  ungroup() %>% 
+  mutate(n = ntile(x2017, 4)) %>% 
+  st_as_sf() %>% 
+  ggplot() +
+  geom_sf(aes(fill = n)) +
+  scale_fill_gradient(high = "#9C1F2E", low = "white") +
+  theme_void() +
+  coord_sf() +
+  theme(legend.position = 'bottom',
+        text = element_text(family = 'lato', size = 30)) +
+  labs(title = "Community District Quartiled Homeownership Rate", 
+       # caption = "Data as of April 14, 2021",
+       fill = "Quartile: ")
+
+hrate %>% 
+  select(sub_borough_area, x2017) %>% 
+  left_join(., names, by = 'sub_borough_area') %>% 
+  left_join(., shape_file, by = c('boro_code' = 'BoroCD')) %>%
+  ungroup() %>% 
+  mutate(rate = (COVID_CASE_COUNT/POP_DENOMINATOR)/x2017,
+         n = ntile(rate, 4)) %>% 
+  st_as_sf() %>% 
+  ggplot() +
+  geom_sf(aes(fill = n)) +
+  scale_fill_gradient(high = "#9C1F2E", low = "white") +
+  theme_void() +
+  coord_sf() +
+  theme(legend.position = 'bottom',
+        text = element_text(family = 'lato', size = 30)) +
+  labs(title = "Community District Quartiled Homeownership COVID-19 Index", 
+       caption = "Data as of April 14, 2021",
+       fill = "Quartile: ")
+
+## Building Footprint -----------------------------------------------------------------------------
+
+building = read_sf("C:\\RScripts\\BAC@MC 2021\\BAC-MC-2021\\Shapefiles\\Building Footprints.geojson")
+
+building %>% 
+  ggplot() +
+  geom_sf()
 
 ## 2020 Data File ---------------------------------------------------------------------------------
 
 dat = read_csv(glue(path, "/Data/nyc_agg_data.csv")) %>% 
   mutate(across(where(is.character), ~replace_na(.x, "Missing")))
 
+## Similarity Algorithm ---------------------------------------------------------------------------
+
+get_slope_all = function(group){
+  dt = temp %>% 
+    filter(boro_code == group) %>% 
+    relocate(contains('code'), .before = 1) %>% 
+    select(starts_with('x')) %>% 
+    pivot_longer(everything(), names_to = 'year', values_to = 'value') %>% 
+    mutate(year = str_remove(year, '^x'),
+           year = as.numeric(year)-2000) %>% 
+    filter(year != 0) %>% 
+    mutate(value = replace_na(value, mean(value, na.rm = T)))
+  
+  l = lm(value~year, data = dt) %>% summary()
+  ret = l$coefficients[2] %>% as.numeric()
+  return(ret)
+}
+
+data = names %>% select(boro_code) %>% distinct()
+
+for (sheet in readxl::excel_sheets(glue(path, "/Data/NYC-housing-data.xlsx"))){
+  
+  print(sheet)
+  
+  sheet_sub = sheet %>% 
+    str_extract("[a-z ]{10}") %>% 
+    str_replace_all(' ', '_')
+  
+  temp = read_xlsx(glue(path, "/Data/NYC-housing-data.xlsx"), sheet = sheet) %>% 
+    janitor::clean_names('snake') %>% 
+    select(-starts_with('short_'), -starts_with('long_')) %>% 
+    janitor::remove_empty("cols")
+  
+  if ("community_district" %in% variable.names(temp)){
+    
+    temp = temp %>% 
+      mutate(code_prefix = str_extract(community_district, pattern = "^[A-Za-z]{2}"),
+             code_suffix = str_extract(community_district, pattern = "\\d{2}")) %>% 
+      mutate(code_prefix = case_when(code_prefix== "MN" ~ 1,
+                                     code_prefix== "BX" ~ 2,
+                                     code_prefix== "BK" ~ 3,
+                                     code_prefix== "QN" ~ 4,
+                                     code_prefix== "SI" ~ 5),
+             boro_code = glue("{code_prefix}{code_suffix}") %>% as.numeric()) %>% 
+      select(-community_district, -code_prefix, -code_suffix)
+    
+  } else if ("sub_borough_area" %in% variable.names(temp)) {
+    
+    temp2 = temp %>% left_join(., names, by = 'sub_borough_area') 
+    
+    test = temp2 %>% 
+      select('sub_borough_area') %>% 
+      anti_join(., names) %>% 
+      select(sub_borough_area) %>% 
+      filter(!is.na(sub_borough_area)) %>% 
+      distinct()
+    
+    if (nrow(test) > 1){
+      temp2 = test %>% left_join(., names, by = c('sub_borough_area' = 'census_name'))
+    }
+    
+    temp = temp2
+    rm(temp2)
+    
+  }
+  
+  if (sheet == "Crowding"){
+    temp = temp %>% 
+      mutate(geography = str_remove_all(geography, '^borough/PUMA\\) - ')) %>% 
+      filter(geo_type_name == 'Neighborhood (Community District)') %>% 
+      mutate(code_suffix = str_extract(geography, pattern = "\\d{1,2}"),
+             code_suffix = ifelse(nchar(code_suffix) == 1, 
+                                  glue("0{code_suffix}") %>% as.character(),
+                                  code_suffix)) %>% 
+      mutate(code_prefix = case_when(borough == "Manhattan" ~ 1,
+                                     borough == "Bronx" ~ 2,
+                                     borough == "Brooklyn" ~ 3,
+                                     borough == "Queens" ~ 4,
+                                     borough == "Staten" ~ 5),
+             boro_code = glue("{code_prefix}{code_suffix}") %>% as.numeric()) %>% 
+      select(boro_code, number, percent_of_households)
+    
+  }
+  
+  if ('x2010' %in% variable.names(temp)) {
+    
+    temp = temp %>%
+      relocate(contains('c'), .before = 1) %>% 
+      select(boro_code, last_col()) %>% 
+      mutate(slope = map(boro_code, ~get_slope_all(.x)) %>% as.numeric()) %>%
+      mutate(m_dir = ifelse(slope > 0, 'POSITIVE', 'NEGATIVE')) %>% 
+      dplyr::rename_with(~glue('{sheet_sub}_{.x}'), !starts_with('boro'))
+    
+  } else {
+    
+    temp = temp %>% rename_with(~glue('{sheet_sub}_{.x}'), !starts_with('boro'))
+    
+  }
+  
+  data = data %>% left_join(., temp, by = "boro_code")  
+}
+
+for (sheet in readxl::excel_sheets(glue(path, "/Data/NYC-demographic-other-data.xlsx"))[1:12]){
+  
+  print(sheet)
+  
+  sheet_sub = sheet %>% 
+    str_extract("[a-z ]{10}") %>% 
+    str_replace_all(' ', '_')
+  
+  temp = read_xlsx(glue(path, "/Data/NYC-demographic-other-data.xlsx"), sheet = sheet) %>% 
+    janitor::clean_names('snake') %>% 
+    select(-starts_with('short_'), -starts_with('long_')) %>% 
+    janitor::remove_empty("cols")
+  
+  if ("community_district" %in% variable.names(temp)){
+    temp = temp %>% 
+      mutate(code_prefix = str_extract(community_district, pattern = "^[A-Za-z]{2}"),
+             code_suffix = str_extract(community_district, pattern = "\\d{2}")) %>% 
+      mutate(code_prefix = case_when(code_prefix== "MN" ~ 1,
+                                     code_prefix== "BX" ~ 2,
+                                     code_prefix== "BK" ~ 3,
+                                     code_prefix== "QN" ~ 4,
+                                     code_prefix== "SI" ~ 5),
+             boro_code = glue("{code_prefix}{code_suffix}") %>% as.numeric()) %>% 
+      select(-community_district, -code_prefix, -code_suffix)
+    
+  } else if ("sub_borough_area" %in% variable.names(temp)) {
+    
+    temp2 = temp %>% left_join(., names, by = 'sub_borough_area') 
+    
+    test = temp2 %>% 
+      select('sub_borough_area') %>% 
+      anti_join(., names) %>% 
+      select(sub_borough_area) %>% 
+      filter(!is.na(sub_borough_area)) %>% 
+      distinct()
+    
+    if (nrow(test) > 1){
+      temp2 = test %>% left_join(., names, by = c('sub_borough_area' = 'census_name'))
+    }
+    
+    temp = temp2
+    rm(temp2)
+    
+  }
+  
+  if ("geography" %in% variable.names(temp)){
+    
+    temp = temp %>% 
+      mutate(geography = str_remove_all(geography, '^borough/PUMA\\) - ')) %>% 
+      filter(geo_type_name == 'Neighborhood (Community District)') %>% 
+      mutate(code_suffix = str_extract(geography, pattern = "\\d{1,2}"),
+             code_suffix = ifelse(nchar(code_suffix) == 1, 
+                                  glue("0{code_suffix}") %>% as.character(),
+                                  code_suffix)) %>% 
+      mutate(code_prefix = case_when(borough == "Manhattan" ~ 1,
+                                     borough == "Bronx" ~ 2,
+                                     borough == "Brooklyn" ~ 3,
+                                     borough == "Queens" ~ 4,
+                                     borough == "Staten" ~ 5),
+             boro_code = glue("{code_prefix}{code_suffix}") %>% as.numeric()) %>% 
+      select(boro_code, number, percent)
+    
+  }
+  
+  if ('x2010' %in% variable.names(temp) | 'x2014' %in% variable.names(temp)) {
+    
+    temp = temp %>%
+      relocate(contains('c'), .before = 1) %>% 
+      select(boro_code, last_col()) %>% 
+      mutate(slope = map(boro_code, ~get_slope_all(.x)) %>% as.numeric()) %>%
+      mutate(m_dir = ifelse(slope > 0, 'POSITIVE', 'NEGATIVE')) %>% 
+      dplyr::rename_with(~glue('{sheet_sub}_{.x}'), !starts_with('boro'))
+    
+  } else {
+    
+    temp = temp %>% rename_with(~glue('{sheet_sub}_{.x}'), !starts_with('boro'))
+    
+  }
+  
+  data = data %>% left_join(., temp, by = "boro_code")  
+}
+
+homes = read_csv("https://raw.githubusercontent.com/andrewargeros/BAC-MC-2020/master/Data/Housing_New_York_Units_by_Building.csv") %>% 
+  janitor::clean_names("snake") %>% 
+  mutate(community_board = str_remove(community_board, "-")) %>% 
+  transform(project_start_date = as.Date(project_start_date, "%m/%d/%Y")) %>% 
+  mutate(code_prefix = str_extract(community_board, pattern = "^[A-Za-z]{2}"),
+         code_suffix = str_extract(community_board, pattern = "\\d{2}")) %>% 
+  mutate(code_prefix = case_when(code_prefix== "MN" ~ 1,
+                                 code_prefix== "BX" ~ 2,
+                                 code_prefix== "BK" ~ 3,
+                                 code_prefix== "QN" ~ 4,
+                                 code_prefix== "SI" ~ 5),
+         boro_code = glue("{code_prefix}{code_suffix}") %>% as.numeric()) %>% 
+  group_by(boro_code) %>% 
+  mutate(lowinc = (extremely_low_income_units + very_low_income_units + low_income_units),
+         ownshare = (counted_homeownership_units/total_units)) %>% 
+  summarise(total_lowinc = sum(lowinc),
+            ownshare = mean(ownshare),
+            total_units = sum(total_units),
+            lowshare = total_lowinc/total_units,
+            total_ownable = sum(counted_homeownership_units),
+            projects = n_distinct(project_id))
+
+data = data %>% 
+  mutate(across(ends_with('m_dir'), as.factor)) %>% 
+  mutate(across(ends_with('suffix'), as.factor)) %>% 
+  left_join(., homes, by = 'boro_code') %>% 
+  mutate(across(total_lowinc:last_col(), ~replace_na(.x, 0)))
+
+fixed_data = recipe(home_owner_x2018 ~ ., data = data) %>% 
+  update_role(boro_code, new_role = 'ID') %>% 
+  step_scale(all_numeric(), -all_outcomes(), -boro_code) %>% 
+  step_center(all_numeric(), -all_outcomes(), -boro_code) %>% 
+  step_knnimpute(all_numeric(), -boro_code) %>%
+  step_rm(all_nominal()) %>% 
+  step_umap(all_predictors(), -boro_code) %>%
+  # step_pca(all_predictors(), num_comp = 5) %>% 
+  prep(data, retain = T) %>% 
+  bake(new_data = NULL)
+
+fixed_data %>% 
+  mutate(bp = str_extract(as.character(boro_code), ".")) %>% 
+  ggplot() +
+  aes(umap_1, umap_2, color = factor(bp)) +
+  geom_point(size = 5, alpha = 0.7)
+
+dbs = dbscan(fixed_data, eps = 0.8, MinPts = 7, scale = TRUE, method = 'raw')[["cluster"]] %>% 
+  bind_cols(fixed_data %>% select(boro_code, umap_1, umap_2)) %>% 
+  rename('cluster' = 1)
+
+dbs %>% 
+  ggplot() +
+  aes(umap_1, umap_2, color = factor(cluster)) +
+  geom_point(size = 5, alpha = 0.7)
