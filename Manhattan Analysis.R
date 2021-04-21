@@ -5,6 +5,7 @@ library(tidyverse)
 library(tidymodels)
 library(readxl)
 library(sf)
+library(magrittr)
 library(glue)
 library(embed)
 library(fpc)
@@ -30,7 +31,7 @@ shape_file %>%
     theme_void() +
     coord_sf() +
     theme(legend.position = 'bottom',
-          text = element_text(family = 'lato', size = 30)) +
+          text = element_text(family = 'lato', size = 70)) +
     labs(title = "Sub-borough Quartiled Rate of COVID-19", 
          caption = "Data as of April 14, 2021",
          fill = "Quartile: ")
@@ -209,10 +210,11 @@ names = read_xlsx(glue(path, "/Data/sub_boro_cd_conversion.xlsx"),
 
 hrate %>% 
   select(sub_borough_area, x2017) %>% 
+  mutate(x = 1-x2017) %>% 
   left_join(., names, by = 'sub_borough_area') %>% 
   left_join(., shape_file, by = c('boro_code' = 'BoroCD')) %>%
   ungroup() %>% 
-  mutate(n = ntile(x2017, 4)) %>% 
+  mutate(n = ntile(x, 4)) %>% 
   st_as_sf() %>% 
   ggplot() +
   geom_sf(aes(fill = n)) +
@@ -220,7 +222,7 @@ hrate %>%
   theme_void() +
   coord_sf() +
   theme(legend.position = 'bottom',
-        text = element_text(family = 'lato', size = 30)) +
+        text = element_text(family = 'lato', size = 70)) +
   labs(title = "Community District Quartiled Homeownership Rate", 
        # caption = "Data as of April 14, 2021",
        fill = "Quartile: ")
@@ -239,10 +241,12 @@ hrate %>%
   theme_void() +
   coord_sf() +
   theme(legend.position = 'bottom',
-        text = element_text(family = 'lato', size = 30)) +
+        text = element_text(family = 'lato', size = 70),
+        plot.title = element_markdown(lineheight = 1.1, size = 60, hjust = 0.5)) +
   labs(title = "Community District Quartiled Homeownership COVID-19 Index", 
        caption = "Data as of April 14, 2021",
        fill = "Quartile: ")
+ggsave(glue("{path}/Plots/covid_rate_4tile.png"), height = 6, width = 8, units = 'in')
 
 ## Building Footprint -----------------------------------------------------------------------------
 
@@ -469,28 +473,141 @@ data = data %>%
   left_join(., homes, by = 'boro_code') %>% 
   mutate(across(total_lowinc:last_col(), ~replace_na(.x, 0)))
 
+set.seed(15)
+
 fixed_data = recipe(home_owner_x2018 ~ ., data = data) %>% 
   update_role(boro_code, new_role = 'ID') %>% 
   step_scale(all_numeric(), -all_outcomes(), -boro_code) %>% 
   step_center(all_numeric(), -all_outcomes(), -boro_code) %>% 
   step_knnimpute(all_numeric(), -boro_code) %>%
   step_rm(all_nominal()) %>% 
-  step_umap(all_predictors(), -boro_code) %>%
-  # step_pca(all_predictors(), num_comp = 5) %>% 
+  # step_umap(all_predictors(), -boro_code) %>%
+  step_pca(all_predictors(), num_comp = 2) %>%
   prep(data, retain = T) %>% 
   bake(new_data = NULL)
 
-fixed_data %>% 
-  mutate(bp = str_extract(as.character(boro_code), ".")) %>% 
-  ggplot() +
-  aes(umap_1, umap_2, color = factor(bp)) +
-  geom_point(size = 5, alpha = 0.7)
+ts = Rtsne(fixed_data, dims = 2, verbose = T, max_iter = 25, perplexity = 10)[['Y']]
 
-dbs = dbscan(fixed_data, eps = 0.8, MinPts = 7, scale = TRUE, method = 'raw')[["cluster"]] %>% 
-  bind_cols(fixed_data %>% select(boro_code, umap_1, umap_2)) %>% 
-  rename('cluster' = 1)
+dbs = dbscan(ts, eps = 0.85, MinPts = 16, scale = T, method = 'hybrid')[["cluster"]] %>% 
+  bind_cols(fixed_data %>% select(boro_code)) %>% 
+  bind_cols(ts %>% as_tibble()) %>% #0.8, 16
+  rename('cluster' = 1) %>% 
+  mutate(cluster = ifelse(cluster == 0, 'Selected', 'Not Selected'))
 
 dbs %>% 
   ggplot() +
-  aes(umap_1, umap_2, color = factor(cluster)) +
-  geom_point(size = 5, alpha = 0.7)
+  aes(V1, V2, color = factor(cluster)) +
+  geom_point(size = 8, alpha = 0.86) +
+  scale_color_manual(values = c('gray30','#9C1F2E')) +
+  theme_minimal() +
+  theme(text = element_text(family = 'lato', size = 70),
+        plot.title = element_markdown(lineheight = 1.1, size = 70)) +
+  labs(title = "Density Based Spatial Clustering",
+       x = expression(TSNE[1]),
+       y = expression(TSNE[2]),
+       color = element_blank())
+ggsave(glue("{path}/Plots/dbscan_plot.png"), height = 6, width = 8, units = 'in')
+
+shape_file %>% 
+  left_join(., dbs, by = c('BoroCD' = 'boro_code')) %>% 
+  mutate(cluster = replace_na(cluster, 'Not Selected')) %>% 
+  st_as_sf() %>% 
+  ggplot() +
+  geom_sf(aes(fill = cluster)) +
+  # geom_text(aes(x = lon, y = lat, label = BoroCD), color = 'gray85') +
+  scale_fill_manual(values = c('gray85','#9C1F2E')) +
+  theme_void() +
+  coord_sf() +
+  theme(legend.position = 'right',
+        text = element_text(family = 'lato', size = 70),
+        plot.title = element_text(vjust = 0.5, hjust = -1)) +
+  labs(title = "Map of Selected Community Districts", 
+       fill = "Type")
+ggsave(glue("{path}/Plots/dbscan_map.png"), height = 6, width = 8, units = 'in')
+
+shape_file %>% 
+  inner_join(., data, by = c('BoroCD' = 'boro_code')) %>% 
+  mutate(x = COVID_CASE_COUNT/POP_DENOMINATOR) %$% cor(x, housing_un_x2018)
+
+## Capacity Calculation ---------------------------------------------------------------------------
+
+housing_units = read_xlsx(glue(path, "/Data/NYC-housing-data.xlsx"), sheet = 'housing units') %>% 
+  janitor::clean_names('snake') %>% 
+  select(-starts_with('short_'), -starts_with('long_')) %>% 
+  janitor::remove_empty("cols") %>% 
+  select(sub_borough_area, x2018) %>% 
+  left_join(., names, by = 'sub_borough_area') %>% 
+  left_join(., dbs, by = "boro_code") %>% 
+  left_join(., read_xlsx(glue(path, "/Data/NYC-demographic-other-data.xlsx"), sheet = 'population') %>% 
+                janitor::clean_names('snake') %>% 
+                select(-starts_with('short_'), -starts_with('long_')) %>% 
+                janitor::remove_empty("cols") %>% 
+                select(sub_borough_area, x2018) %>% 
+                rename('pop' = 2),
+            by = 'sub_borough_area') %>% 
+  left_join(., homes, by = 'boro_code') %>% 
+  mutate(across(everything(), ~replace_na(.x, 0))) %>% 
+  mutate(houses = x2018 + total_units) %>% 
+  group_by(cluster) %>% 
+  summarise(avg_housing = mean(houses),
+            total_housing = sum(houses),
+            avg_pop = mean(pop),
+            total_pop = sum(pop),
+            avg_people_per_house = avg_pop/avg_housing,
+            n = n_distinct(boro_code),
+            con = mean(total_units),
+            th = total_housing*avg_people_per_house)
+
+
+
+## Zoning -----------------------------------------------------------------------------------------
+
+read_sf("C:\\RScripts\\BAC@MC 2021\\BAC-MC-2021\\Shapefiles\\nyc_zoningarea.geojson") %>% 
+  mutate(residential = ifelse(str_detect(ZONEDIST, "R|C") & 
+                              !ZONEDIST %in% c('PLAYGROUND', 'PARK', 'PUBLIC PLACE', 'C7', 'C8'),
+                              "Residential", "Not Residential")) %>% 
+  ggplot() +
+  geom_sf(aes(fill = residential, color = residential)) +
+  geom_sf(data = shape_file, fill = NA, color = 'black', size = 1) +
+  scale_fill_manual(values = c('gray85','#9C1F2E')) +
+  scale_color_manual(values = c('gray85','#9C1F2E')) +
+  theme_void() +
+  coord_sf() +
+  theme(legend.position = 'none',
+        text = element_text(family = 'lato', size = 70),
+        plot.title = element_text(vjust = 0.5, hjust = -1)) +
+  labs(title = element_blank())
+ggsave(glue("{path}/Plots/zone_map.png"), height = 6, width = 8, units = 'in')
+
+
+read_xlsx(glue(path, "/Data/NYC-housing-data.xlsx"), sheet = 'housing units') %>% 
+  janitor::clean_names('snake') %>% 
+  select(-starts_with('short_'), -starts_with('long_')) %>% 
+  janitor::remove_empty("cols") %>% 
+  select(sub_borough_area, x2018) %>% 
+  left_join(., names, by = 'sub_borough_area') %>% 
+  left_join(., dbs, by = "boro_code") %>% 
+  left_join(., read_xlsx(glue(path, "/Data/NYC-demographic-other-data.xlsx"), sheet = 'population') %>% 
+              janitor::clean_names('snake') %>% 
+              select(-starts_with('short_'), -starts_with('long_')) %>% 
+              janitor::remove_empty("cols") %>% 
+              select(sub_borough_area, x2018) %>% 
+              rename('pop' = 2),
+            by = 'sub_borough_area') %>% 
+  left_join(., homes, by = 'boro_code') %>% 
+  filter(cluster == 'Selected') %>% 
+  mutate(houses = x2018 + total_units) %>%
+  group_by(boro_code) %>% 
+  summarise(n = sum(houses)) %>% 
+  ggplot() +
+  aes(x = reorder(factor(boro_code),-n), y = n) +
+  geom_bar(stat = 'identity', fill = '#9C1F2E') +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal() +
+  theme(text = element_text(family = 'lato', size = 70),
+        axis.text.x = element_text(angle = 90),
+        axis.title.x = element_text(vjust = 0.5)) +
+  labs(title = "Housing Units Available by Community Board", 
+       x = "Community Board",
+       y = 'Housing Units')
+ggsave(glue("{path}/Plots/hunits.png"), height = 7, width = 11, units = 'in')
