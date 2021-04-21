@@ -606,7 +606,7 @@ read_xlsx(glue(path, "/Data/NYC-housing-data.xlsx"), sheet = 'housing units') %>
   theme_minimal() +
   theme(text = element_text(family = 'lato', size = 70),
         axis.text.x = element_text(angle = 90),
-        axis.title.x = element_text(vjust = 0.5)) +
+        axis.title.x = element_text(vjust = 1)) +
   labs(title = "Housing Units Available by Community Board", 
        x = "Community Board",
        y = 'Housing Units')
