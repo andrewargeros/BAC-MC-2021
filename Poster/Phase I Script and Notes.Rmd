@@ -9,36 +9,51 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Introduction -----------------------------------------------------------------------------------
+## Introduction
 
-[Andrew]: Hi! I'm Andrew Argeros
+**//Andrew//**: Hi! I'm Andrew Argeros
 
-[Elias]: And my name is Elias Ramirez
+**//Elias//**: And my name is Elias Ramirez
 
-[Andrew]: we're from Hamline University in St. Paul, Minnesota, and we'll be talking to you about the effects of affordable housing on New Yorkers, especially given the ongoing COVID-19 pandemic.
+**//Andrew//**: we're from Hamline University in St. Paul, Minnesota, and we'll be talking to you about the effects of affordable housing on New Yorkers, especially given the ongoing COVID-19 pandemic.
 
-## Background -------------------------------------------------------------------------------------
+## Background
 
-[Elias]: So as you know, for the past year, the pandemic has affected how cities function across the world. It has been especially tough on low-income families who have struggled to make ends meet, especially when considering the burden and stress of renting your home. In fact, during the pandemic, states including New York enacted eviction freezes in attempt to ease this burden. This would have been less of an issue had more New Yorkers owned their homes. However, the main reason many still rent is the cost, so we set out to find a way to make owning a New York City home more affordable.
+**//Elias//**: So as you know, for the past year, the pandemic has affected how cities function across the world. It has been especially tough on low-income families who have struggled to make ends meet, especially when considering the burden and stress of renting your home. In fact, during the pandemic, states including New York enacted eviction freezes in attempt to ease this burden. This would have been less of an issue had more New Yorkers owned their homes. However, the main reason many still rent is the cost, so we set out to find a way to make owning a New York City home more affordable.
 
-## Objectives -------------------------------------------------------------------------------------
+## Objectives
 
-[Elias]: The way we propose doing this is through three phases. First, we looked at the data to find community districts that would benefit most from affordable housing initiatives, these being districts with housing capacity, low rates of home ownership, and ongoing development. Then, we looked to leverage the current, and developing infrastructure within the identified districts to bring homes to as many New Yorkers as possible. And lastly, we formulated a plan to make this all feasible, by incentivizing both the supply and demand of the housing market. But to look at where the city is now, I'm going to turn it over to Andrew to walk you through it. 
+**//Elias//**: The way we propose doing this is through three phases. First, we looked at the data to find community districts that would benefit most from affordable housing initiatives, these being districts with housing capacity, low rates of home ownership, and ongoing development. Then, we looked to leverage the current, and developing infrastructure within the identified districts to bring homes to as many New Yorkers as possible. And lastly, we formulated a plan to make this all feasible, by incentivizing both the supply and demand of the housing market. But to look at where the city is now, I'm going to turn it over to Andrew to walk you through it. 
 
-## Current State ----------------------------------------------------------------------------------
+## Current State
 
-[Andrew]: Thanks, Elias! So, to look at the future of the housing market within the city, we need to understand what's going on right now. Currently, there are more than 3 and a half million housing units (those being actual houses, as well as condos and townhouses), and when factoring in the average density, the city still has room for nearly 3/4 of a million additional residents. This is good news, as only one acre of undeveloped land in New York costs roughly $91 million. The news gets even better, looking at the forecasts of capacity and population growth. Given two linear models in Figure 1, we see that, at the current rates of development and population growth, the amount of open space is actually expected to grow. 
+**//Andrew//**: Thanks, Elias! So, to look at the future of the housing market within the city, we need to understand what's going on right now. Currently, there are more than 3 and a half million housing units (those being actual houses, as well as condos and townhouses), and when factoring in the average density, the city still has room for nearly 3/4 of a million additional residents. This is good news, as only one acre of undeveloped land in New York costs roughly $91 million. The news gets even better, looking at the forecasts of capacity and population growth. Given two linear models in Figure 1, we see that, at the current rates of development and population growth, the amount of open space is actually expected to grow. 
 
-## COVID-19 Effects -------------------------------------------------------------------------------
+## COVID-19 Effects
 
-[Elias]: So to look at the effects of COVID on different areas on New York with respect to home ownership, we created a sort of index to see these effects. Basically, by dividing the rate of coronavirus infections in a community board by the percent owner occupied units there, we can see in Figure 2 that there are distinct areas that the regions most heavily affected tend to be clustered together in lower income areas. In fact, the two variables, home ownership and infection rates, are correlated at roughly 55%. This map will be important again when we talk about the community districts we picked for funding.
+**//Elias//**: So to look at the effects of COVID on different areas on New York with respect to home ownership, we created a sort of index to see these effects. Basically, by dividing the rate of coronavirus infections in a community board by the percent owner occupied units there, we can see in Figure 2 that there are distinct areas that the regions most heavily affected tend to be clustered together in lower income areas. In fact, the two variables, home ownership and infection rates, are correlated at roughly 55%. This map will be important again when we talk about the community districts we picked for funding.
 
-## Identifying Community Districts ----------------------------------------------------------------
+## Identifying Community Districts
 
-[Andrew]: As Elias said earlier, our analysis targeted community boards that shared some common characteristics: lots of open housing, lower than average populations, significant impacts from the pandemic and more. To do this we took the data that was provided, along with data from New York's Open Data Commons and the Census, aggregated it at the community board level and reduced the dimensions using stochastic neighbor embedding to simplify the original data, then we found non-parametric clusters within the reduced data. This yeilded our target areas: in the Bronx, lower Manhattan, and Brooklyn. 
+**//Andrew//**: As Elias said earlier, our analysis targeted community boards that shared some common characteristics: lots of open housing, lower than average populations, significant impacts from the pandemic and more. To do this we took the data that was provided, along with data from New York's Open Data Commons and the Census, aggregated it at the community board level and reduced the dimensions using stochastic neighbor embedding to simplify the original data, then we found non-parametric clusters within the reduced data. This yeilded our target areas: in the Bronx, lower Manhattan, and Brooklyn. 
 
-[Andrew]: Going back to earlier, these boroughs are the ones we identified earlier as having open capacity. Additionally, these district were either acutely affected, or next to areas that were hit hard by the COVID-19 pandemic, since the COVID-19 data may be skewed given HIPAA coverage of aggregation and community districts being relatively small areas.
+**//Andrew//**: Going back to earlier, these boroughs are the ones we identified earlier as having open capacity. Additionally, these district were either acutely affected, or next to areas that were hit hard by the COVID-19 pandemic, since the COVID-19 data may be skewed given HIPAA coverage of aggregation and community districts being relatively small areas.
 
-## Residential Area -------------------------------------------------------------------------------
+## Residential Area
 
-[Andrew]: In fact, if we then consider the percent of land within the community district that is zoned for living. This zoning info again stems from New York Open data and is displayed in figure 5. Compared to the citywide average, the community districts our model identified have roughly 15 percent more livable area, at around 85% of the district being livable on average.
+**//Andrew//**: In fact, if we then consider the percent of land within the community district that is zoned for living. This zoning info again stems from New York Open data and is displayed in figure 5. Compared to the citywide average, the community districts our model identified have roughly 15 percent more livable area, at around 85% of the district being livable on average.
+
+## Reccommendation
+
+**//Andrew//**: So to look at what that means in the context of affordable housing, when keeping each district's crowding and density metrics constant, our proposal could bring home ownership to over 3.1 million current New York renters. This comes through the fact that the average community district chosen has more than 73,000 available housing units, when factoring in growth rates and current construction plans. And now I'm going to turn it back to Elias to walk through exactly how we could make this happen.
+
+**//Elias//**: As Andrew said, we need to make this feasible. To do so, we propose 3 factors to incentivize both landlords and renters. First, current renters need stimulus to afford mortgages. For those who qualify, current renters would receive up to \$200 per month to subsidize their mortgages. Then, to create more homes for purchase, developers who convert units could recieve a credit up to \$5,000 per converted home Then, we would additionally tax the landlords who do not convert a percentage of their already rent stabilized units. This would push landlords to put homes on the market, and push rent stabilized tenants to buy their homes, all while mitigating the hit to the everyday taxpayer. New development could be controlled similarly, with a portion of new construction being required to be for sale. 
+
+## Cost
+
+**//Elias//**: The best part of this solution is that it is entirely self sustained within New York City's afforable housing budget of roughly $4 billion when accounting for state and federal appropriations.
+
+**//Andrew://** So to summarize our proposal, we have identified 22 community boards within the city that would yeild the greatest benefit from afforidable housing initiatives. We have created a plan to address the residential space needed, and kept the cost well within the city's budget for these initiatives. 
+
+**//Elias//**: With that, we'd like to thank you for taking the time to listen to our presentation for the Business Analytics Competition at Manhattan College!
+
