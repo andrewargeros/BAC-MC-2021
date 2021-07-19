@@ -3,8 +3,9 @@
 ## Contributors: [Andrew Argeros](https://www.linkedin.com/in/andrewargeros/) and [Elias Ramirez](https://www.linkedin.com/in/elias-ramirez-366881202/) [<img align="right" alt="HU" width="200px" src="https://www.collegeconsensus.com/wp-content/uploads/2020/05/Hamline-University-logo.png" />][HU]
 ##### **[Max Bolger](https://www.linkedin.com/in/max-bolger/) started work in this project but left before significant contribution*
 
-
 This repo houses all the code used in our entry to the [2021 Business Analytics Competition at Manhattan College](https://manhattan.edu/academics/schools-and-departments/school-of-business/business-analytics-competition/index.php) for Phase I of the competition.
+
+![](./Poster/pics/poster_image.png)
 
 ### The Problem 📃
 
@@ -31,7 +32,7 @@ We then analyzed the amount of livable space within the target districts via the
 
 We then proposed a plan to make this feasible, within the city's annual housing appropriations.
 
-
+Our proposal would have make home ownership available for an additional 3.1 million New Yorkers for a cost of $2.85 billion dollars, or 70% of New York City's annual affordable housing budget.
 
 
 
